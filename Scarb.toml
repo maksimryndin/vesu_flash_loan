@@ -1,0 +1,24 @@
+[package]
+name = "vesu_flash_loan"
+version = "0.1.0"
+edition = "2024_07"
+
+# See more keys and their definitions at https://docs.swmansion.com/scarb/docs/reference/manifest.html
+
+[dependencies]
+ekubo = { git = "https://github.com/ekuboprotocol/abis" }
+starknet = "2.7.1"
+
+[dev-dependencies]
+snforge_std = { git = "https://github.com/foundry-rs/starknet-foundry", tag = "v0.27.0" }
+
+[[target.starknet-contract]]
+sierra = true
+
+[scripts]
+test = "snforge test"
+
+[[tool.snforge.fork]]
+name = "SEPOLIA_FORK"
+url = "https://free-rpc.nethermind.io/sepolia-juno/v0_7"
+block_id.number = "122631" # we use a specific block for reproducibility
