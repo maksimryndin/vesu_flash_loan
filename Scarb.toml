@@ -18,6 +18,6 @@ sierra = true
 test = "snforge test"
 
 [[tool.snforge.fork]]
-name = "SEPOLIA_FORK"
-url = "https://free-rpc.nethermind.io/sepolia-juno/v0_7"
-block_id.number = "122631" # we use a specific block for reproducibility
+name = "MAINNET_FORK"
+url = "https://free-rpc.nethermind.io/mainnet-juno/v0_7"
+block_id.number = "671358" # we use a specific block for reproducibility

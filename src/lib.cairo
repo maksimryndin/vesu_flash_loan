@@ -15,9 +15,7 @@ pub trait IArbitrageur<TContractState> {
 
     // Does a multihop swap, where the output of each hop is passed as input of the
     // next swap
-    fn multihop_swap(
-        ref self: TContractState, path: Array<felt252>, token: ContractAddress, amount: u256
-    );
+    fn multihop_swap(ref self: TContractState, path: Array<felt252>, amount: u256);
 
     // Get the owner of the bot, read-only (view) function
     fn get_owner(self: @TContractState) -> ContractAddress;
@@ -86,7 +84,8 @@ pub mod arbitrage {
 
             let params: ExactInputParams = Serde::deserialize(ref data)
                 .expect('deserialize swap params');
-            // Approve the router to spend DAI.
+            // Approve the router to spend token.
+            // https://docs.jediswap.xyz/for-developers/jediswap-v1/smart-contract-integration/implement-a-swap#id-2.-approve
             let token = IERC20Dispatcher { contract_address: asset };
             token.approve(jediswap.contract_address, amount);
             let swapped = jediswap.exact_input(params);
@@ -100,15 +99,16 @@ pub mod arbitrage {
 
         // https://book.cairo-lang.org/ch11-06-inlining-in-cairo.html
         #[inline(always)]
-        fn multihop_swap(
-            ref self: ContractState, path: Array<felt252>, token: ContractAddress, amount: u256
-        ) {
+        fn multihop_swap(ref self: ContractState, path: Array<felt252>, amount: u256) {
             let owner = self.owner.read();
             assert(owner == get_caller_address(), 'unauthorized');
-            assert(*path.at(0) == *path.at(path.len() - 1), 'the same token');
+            assert(*path.at(0) == *path.at(path.len() - 2), 'the same token');
 
-            let token = IERC20Dispatcher { contract_address: token };
+            let token = IERC20Dispatcher {
+                contract_address: (*path.at(0)).try_into().expect('first token')
+            };
             let vesu = self.vesu.read();
+            // Allow Vesu to take back the loan
             token.approve(vesu.contract_address, amount);
 
             let args = ExactInputParams {

@@ -1,16 +1,18 @@
-use snforge_std::{declare, ContractClassTrait, test_address};
+use snforge_std::{declare, ContractClassTrait, test_address, start_cheat_caller_address};
 use vesu_flash_loan::{
     arbitrage, IArbitrageurDispatcher, IArbitrageurDispatcherTrait,
     erc20::{IERC20Dispatcher, IERC20DispatcherTrait}
 };
 use starknet::{ContractAddress, contract_address_const};
 
-// https://github.com/vesuxyz/changelog/blob/main/deployments/deployment_sn_sepolia.json
+// https://github.com/vesuxyz/changelog/blob/main/deployments/deployment_sn_main.json
+// https://voyager.online/contract/0x02545b2e5d519fc230e9cd781046d3a64e092114f07e44771e0d719d148725ef
 const VESU_SINGLETON_ADDRESS: felt252 =
-    0x69d0eca40cb01eda7f3d76281ef524cecf8c35f4ca5acc862ff128e7432964b;
+    0x2545b2e5d519fc230e9cd781046d3a64e092114f07e44771e0d719d148725ef;
 // https://docs.jediswap.xyz/for-developers/jediswap-v2/contract-addresses
+// https://voyager.online/contract/0x0359550b990167afd6635fa574f3bdadd83cb51850e1d00061fe693158c23f80
 const JEDISWAP_ROUTER_ADDRESS: felt252 =
-    0x03c8e56d7f6afccb775160f1ae3b69e3db31b443e544e56bd845d8b3b3a87a21;
+    0x0359550b990167afd6635fa574f3bdadd83cb51850e1d00061fe693158c23f80;
 
 fn declare_and_deploy() -> IArbitrageurDispatcher {
     // First declare and deploy a contract
@@ -25,14 +27,11 @@ fn declare_and_deploy() -> IArbitrageurDispatcher {
     IArbitrageurDispatcher { contract_address }
 }
 
-
-#[test]
-#[fork("SEPOLIA_FORK")]
-fn test_flash_loan() {
+fn setup() -> (IArbitrageurDispatcher, IERC20Dispatcher, u256) {
     // we take one of the tokens supported by Vesu on Sepolia
-    // https://github.com/vesuxyz/changelog/blob/main/deployments/deployment_sn_sepolia.json
+    // https://github.com/vesuxyz/changelog/blob/main/deployments/deployment_sn_main.json
     let token_address = contract_address_const::<
-        0x063d32a3fa6074e72e7a1e06fe78c46a0c8473217773e19f11d8c8cbfc4ff8ca
+        0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7 // ETH
     >();
 
     let token = IERC20Dispatcher { contract_address: token_address };
@@ -45,13 +44,63 @@ fn test_flash_loan() {
 
     let amount: u256 = 1000;
     // We can check the balance of Vesu in the explorer
-    // https://sepolia.voyager.online/contract/0x063d32a3fa6074e72e7a1e06fe78c46a0c8473217773e19f11d8c8cbfc4ff8ca#readContract
+    // https://voyager.online/contract/0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7#readContract
     let balance = token.balanceOf(contract_address_const::<VESU_SINGLETON_ADDRESS>());
     assert(balance > amount.into(), 'amount fits');
-    dispatcher.multihop_swap(array![token.contract_address.into()], token.contract_address, amount);
+    (dispatcher, token, amount)
+}
+
+#[should_panic(expected: ('unauthorized',))]
+#[test]
+#[fork("MAINNET_FORK")]
+fn test_access_swap() {
+    let (dispatcher, token, amount) = setup();
+    let other_address = contract_address_const::<
+        0x0576a87b1d9034d5d34a534c6151497dd1da44b986b1d94d0f42de317e1eef2c
+    >();
+
+    start_cheat_caller_address(dispatcher.contract_address, other_address);
+    assert_ne!(other_address, test_address());
+    assert_eq!(dispatcher.get_owner(), test_address());
+    dispatcher.multihop_swap(array![token.contract_address.into()], amount);
+}
+
+#[should_panic(expected: ('unauthorized',))]
+#[test]
+#[fork("MAINNET_FORK")]
+fn test_access_callback() {
+    let (dispatcher, token, amount) = setup();
+    let other_address = contract_address_const::<
+        0x0576a87b1d9034d5d34a534c6151497dd1da44b986b1d94d0f42de317e1eef2c
+    >();
+
+    start_cheat_caller_address(dispatcher.contract_address, other_address);
+    assert_ne!(other_address, test_address());
+    assert_eq!(dispatcher.get_owner(), test_address());
+    dispatcher.on_flash_loan(test_address(), token.contract_address, amount, array![].span());
+}
+
+#[should_panic(expected: ('Too little received',))]
+#[test]
+#[fork("MAINNET_FORK")]
+fn test_arbitrage() {
+    // we take one of the tokens supported by Vesu on Sepolia
+    // https://github.com/vesuxyz/changelog/blob/main/deployments/deployment_sn_sepolia.json
+    let (dispatcher, token, amount) = setup();
+    // it is important to choose the first token among those supported by Vesu for flash loans
+    // Swap via STRK
+    dispatcher
+        .multihop_swap(
+            array![
+                token.contract_address.into(),
+                0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d,
+                3000,
+                0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d,
+                token.contract_address.into(),
+                3000
+            ],
+            amount
+        );
     let balance_after = token.balanceOf(test_address());
     assert_eq!(balance_after, 0);
 }
-// test_access (both methods)
-// test_arbitrage
-
